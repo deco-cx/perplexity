@@ -1,0 +1,50 @@
+#:schema node_modules/@deco/workers-runtime/config-schema.json
+name = "perplexity"
+main = "main.ts"
+compatibility_date = "2025-06-17"
+compatibility_flags = [ "nodejs_compat" ]
+scope = "decocms"
+
+[deco]
+workspace = "deco-team"
+enable_workflows = true
+local = false
+
+[deco.integration]
+description = "Use DecoCMS's Perplexity Integration to easily search the web without the need to manage an API key."
+friendlyName = "DecoCMS Perplexity"
+icon = "https://assets.decocache.com/mcp/1b3b7880-e7a5-413b-8db2-601e84b22bcd/Perplexity.svg"
+
+[[deco.bindings]]
+type = "contract"
+name = "PERPLEXITY_CONTRACT"
+
+[deco.bindings.contract]
+body = "Perplexity AI Search Service\n\nThis service provides AI-powered search and chat completion capabilities through Perplexity AI's advanced language models.\n\nWhat you get:\n- Real-time web search: Get up-to-date information from across the internet\n- Academic search: Access scholarly articles and research papers\n- AI chat completions: Intelligent responses powered by Perplexity's Sonar models\n- Flexible search options: Customize search context, location, and reasoning depth\n\nPricing:\nPay only for what you use with transparent token-based pricing:\n- Input tokens: $0.000001 USD per token (text you send)\n- Output tokens: $0.000001 USD per token (responses you receive)\n\nExample: A typical search query (~50 tokens) with response (~200 tokens) costs approximately $0.00025 USD.\n\nKey Features:\n* Multiple AI models (Sonar, Sonar Pro, Llama)\n* Image search with relevance enhancement\n* Geographic location-aware results\n* Adjustable reasoning effort levels\n* Academic and web search modes\n* Structured JSON responses\n\nAll payments are processed automatically and securely when you use the service. No setup fees or monthly subscriptions required.\n"
+
+[[deco.bindings.contract.clauses]]
+id = "sonar:input-token"
+price = "1"
+description = "Input tokens - charged for each token in your search queries and prompts (approximately 1 token per 4 characters). U$ 0.00001 per token"
+
+[[deco.bindings.contract.clauses]]
+id = "sonar:output-token"
+price = "1"
+description = "Output tokens - charged for each token in AI-generated responses and search results (approximately 1 token per 4 characters). U$ 0.00001 per token"
+
+[vars]
+PERPLEXITY_API_KEY = "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"
+
+[[migrations]]
+tag = "v1"
+new_classes = [ "Workflow" ]
+
+[durable_objects]
+[[durable_objects.bindings]]
+name = "DECO_CHAT_WORKFLOW_DO"
+class_name = "Workflow"
+
+[[rules]]
+type = "Text"
+globs = [ "**/*.sql" ]
+fallthrough = true

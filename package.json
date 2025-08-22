@@ -1,0 +1,23 @@
+{
+  "name": "perplexity",
+  "version": "1.0.0",
+  "description": "Deco Application built on top of Cloudflare Workers and React",
+  "private": true,
+  "workspaces": [
+    "server"
+  ],
+  "scripts": {
+    "dev": "cd server && npm run dev",
+    "configure": "cd server && deco configure",
+    "gen": "cd server && deco gen --output=deco.gen.ts",
+    "gen:self": "cd server && deco gen --self=https://localhost-8810851b.deco.host/mcp --output=deco.gen.ts",
+    "deploy": "cd server && npm run deploy"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

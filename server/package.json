@@ -1,0 +1,20 @@
+{
+  "name": "server",
+  "description": "Deco MCP server built on top of Cloudflare Workers",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "deco dev --clean-build-dir ./view-build",
+    "deploy": "wrangler build && deco deploy ./dist",
+    "gen": "deco gen --output=deco.gen.ts",
+    "gen:self": "deco gen --self=https://localhost-8810851b.deco.host/mcp --output=deco.gen.ts",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@deco/workers-runtime": "npm:@jsr/deco__workers-runtime@0.13.1",
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "deco-cli": "^0.16.2",
+    "wrangler": "^4.28.0"
+  }
+}
