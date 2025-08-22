@@ -7117,8 +7117,8 @@ export const StateSchema = z.object({
   PERPLEXITY_CONTRACT: z.object({
     value: z.string(),
     __type: z
-      .literal("@decocms/perplexity-d68091b9f5bd955a99048dec68d07fc3")
-      .default("@decocms/perplexity-d68091b9f5bd955a99048dec68d07fc3"),
+      .literal("@decocms/perplexity-2ebbb7873f9f432899e3e33888103626")
+      .default("@decocms/perplexity-2ebbb7873f9f432899e3e33888103626"),
   }),
 });
 

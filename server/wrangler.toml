@@ -25,15 +25,70 @@ body = "Perplexity AI Search Service\n\nThis service provides AI-powered search 
 [[deco.bindings.contract.clauses]]
 id = "sonar:input-token"
 price = "1"
-description = "Input tokens - charged for each token in your search queries and prompts (approximately 1 token per 4 characters). U$ 0.00001 per token"
+description = "Sonar input tokens - $1 per 1M tokens"
 
 [[deco.bindings.contract.clauses]]
 id = "sonar:output-token"
 price = "1"
-description = "Output tokens - charged for each token in AI-generated responses and search results (approximately 1 token per 4 characters). U$ 0.00001 per token"
+description = "Sonar output tokens - $1 per 1M tokens"
+
+[[deco.bindings.contract.clauses]]
+id = "sonar-pro:input-token"
+price = "3"
+description = "Sonar Pro input tokens - $3 per 1M tokens"
+
+[[deco.bindings.contract.clauses]]
+id = "sonar-pro:output-token"
+price = "15"
+description = "Sonar Pro output tokens - $15 per 1M tokens"
+
+[[deco.bindings.contract.clauses]]
+id = "sonar-reasoning:input-token"
+price = "1"
+description = "Sonar Reasoning input tokens - $1 per 1M tokens"
+
+[[deco.bindings.contract.clauses]]
+id = "sonar-reasoning:output-token"
+price = "5"
+description = "Sonar Reasoning output tokens - $5 per 1M tokens"
+
+[[deco.bindings.contract.clauses]]
+id = "sonar-reasoning-pro:input-token"
+price = "2"
+description = "Sonar Reasoning Pro input tokens - $2 per 1M tokens"
+
+[[deco.bindings.contract.clauses]]
+id = "sonar-reasoning-pro:output-token"
+price = "8"
+description = "Sonar Reasoning Pro output tokens - $8 per 1M tokens"
+
+[[deco.bindings.contract.clauses]]
+id = "sonar-deep-research:input-token"
+price = "2"
+description = "Sonar Deep Research input tokens - $2 per 1M tokens"
+
+[[deco.bindings.contract.clauses]]
+id = "sonar-deep-research:output-token"
+price = "8"
+description = "Sonar Deep Research output tokens - $8 per 1M tokens"
+
+[[deco.bindings.contract.clauses]]
+id = "sonar-deep-research:citation-token"
+price = "2"
+description = "Sonar Deep Research citation tokens - $2 per 1M tokens"
+
+[[deco.bindings.contract.clauses]]
+id = "sonar-deep-research:reasoning-token"
+price = "3"
+description = "Sonar Deep Research reasoning tokens - $3 per 1M tokens"
+
+[[deco.bindings.contract.clauses]]
+id = "sonar-deep-research:search-query"
+price = "5000"
+description = "Sonar Deep Research search queries - $5 per 1,000 queries ($0.005 per query)"
 
 [vars]
-PERPLEXITY_API_KEY = "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"
+PERPLEXITY_API_KEY = ""
 
 [[migrations]]
 tag = "v1"
