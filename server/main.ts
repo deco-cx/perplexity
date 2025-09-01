@@ -6,6 +6,7 @@
  */
 import { DefaultEnv, withRuntime } from "@deco/workers-runtime";
 import { type Env as DecoEnv, Scopes, StateSchema } from "./deco.gen.ts";
+import type { KVNamespace } from "@cloudflare/workers-types";
 
 import { tools } from "./tools/index.ts";
 
@@ -18,6 +19,7 @@ import { tools } from "./tools/index.ts";
  */
 export type Env = DefaultEnv & DecoEnv & {
   PERPLEXITY_API_KEY?: string;
+  PERPLEXITY_JOBS?: KVNamespace;
 };
 
 const runtime = withRuntime<Env, typeof StateSchema>({

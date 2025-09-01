@@ -2,15 +2,20 @@ import { createTool } from "@deco/workers-runtime/mastra";
 import type { Env } from "../main.ts";
 import z from "zod";
 import {
+  AsyncApiChatCompletionsResponseSchema,
   BasePerplexityParamsSchema,
-  ModelSchema,
-  ChatMessageSchema,
   callPerplexity,
-  extractTextFromContent,
   ChatCompletionsResponseJsonSchema,
+  ChatMessageSchema,
+  createPerplexityAsyncJob,
   estimateInputTokensFromMessages,
   estimateSearchQueries,
+  extractTextFromContent,
+  getPerplexityAsyncJob,
+  ModelSchema,
 } from "./utils/perplexity.ts";
+
+type Clause = { clauseId: string; amount: number };
 
 const createAskPerplexityTool = (env: Env) =>
   createTool({
@@ -28,31 +33,25 @@ const createAskPerplexityTool = (env: Env) =>
       .object({
         answer: z.string(),
         raw: ChatCompletionsResponseJsonSchema,
-        inputTokens: z.number(),
-        totalAmount: z.string(),
       })
       .strict(),
     execute: async ({ context }) => {
-      const model = context.model ?? "sonar";
+      const toolStartTime = Date.now();
+      const model = context.model;
       const prefix = model;
       const inputTokens = Math.ceil(context.query.length / 4);
 
       const authorizeClauses: Array<{ clauseId: string; amount: number }> = [
         { clauseId: `${prefix}:input-token`, amount: inputTokens },
-        { clauseId: `${prefix}:output-token`, amount: context.max_tokens ?? 0 },
+        { clauseId: `${prefix}:output-token`, amount: context.max_tokens },
       ];
-      if (model === "sonar-deep-research") {
-        authorizeClauses.push(
-          { clauseId: `${prefix}:citation-token`, amount: context.max_tokens ?? 0 },
-          { clauseId: `${prefix}:reasoning-token`, amount: context.max_tokens ?? 0 },
-          { clauseId: `${prefix}:search-query`, amount: estimateSearchQueries(context.reasoning_effort) },
-        );
-      }
-      const { transactionId, totalAmount } = await env.PERPLEXITY_CONTRACT.CONTRACT_AUTHORIZE({
-        clauses: authorizeClauses,
-      });
+
+      const { transactionId } = await env.PERPLEXITY_CONTRACT
+        .CONTRACT_AUTHORIZE({
+          clauses: authorizeClauses,
+        });
       const body: Record<string, unknown> = {
-        model: context.model ?? "sonar",
+        model,
         messages: [
           { role: "user", content: context.query },
         ],
@@ -65,33 +64,33 @@ const createAskPerplexityTool = (env: Env) =>
         }
       }
 
-      // Force non-streaming for tool response
-      body.stream = false;
+      // Force streaming for tool response
+      body.stream = true;
 
-      const json = await callPerplexity(env, body);
+      const json = await callPerplexity(env, body, toolStartTime);
       const first = json?.choices?.[0]?.message?.content;
       const answer = extractTextFromContent(first) || "";
       const settleClauses: Array<{ clauseId: string; amount: number }> = [
-        { clauseId: `${prefix}:input-token`, amount: Math.min(inputTokens, json.usage.prompt_tokens) },
-        { clauseId: `${prefix}:output-token`, amount: Math.min(json.usage.completion_tokens, context.max_tokens ?? json.usage.completion_tokens) },
+        {
+          clauseId: `${prefix}:input-token`,
+          amount: Math.min(inputTokens, json.usage.prompt_tokens),
+        },
+        {
+          clauseId: `${prefix}:output-token`,
+          amount: Math.min(
+            json.usage.completion_tokens,
+            context.max_tokens ?? json.usage.completion_tokens,
+          ),
+        },
       ];
-      if (model === "sonar-deep-research") {
-        const citation = json.usage.citation_tokens ?? 0;
-        const reasoning = json.usage.reasoning_tokens ?? 0;
-        const queries = json.usage.num_search_queries ?? 0;
-        settleClauses.push(
-          { clauseId: `${prefix}:citation-token`, amount: Math.min(citation, context.max_tokens ?? citation) },
-          { clauseId: `${prefix}:reasoning-token`, amount: Math.min(reasoning, context.max_tokens ?? reasoning) },
-          { clauseId: `${prefix}:search-query`, amount: Math.min(queries, estimateSearchQueries(context.reasoning_effort)) },
-        );
-      }
+
       await env.PERPLEXITY_CONTRACT.CONTRACT_SETTLE({
         transactionId,
         vendorId: env.DECO_CHAT_WORKSPACE,
         clauses: settleClauses,
       });
 
-      return { answer, raw: json, inputTokens, totalAmount };
+      return { answer, raw: json };
     },
   });
 
@@ -114,7 +113,7 @@ const createPerplexityChatCompletionsTool = (env: Env) =>
       })
       .strict(),
     execute: async ({ context }) => {
-      const model = context.model ?? "sonar";
+      const model = context.model
       const prefix = model;
       const inputTokens = estimateInputTokensFromMessages(context.messages);
 
@@ -122,14 +121,9 @@ const createPerplexityChatCompletionsTool = (env: Env) =>
         { clauseId: `${prefix}:input-token`, amount: inputTokens },
         { clauseId: `${prefix}:output-token`, amount: context.max_tokens ?? 0 },
       ];
-      if (model === "sonar-deep-research") {
-        authorizeClauses.push(
-          { clauseId: `${prefix}:citation-token`, amount: context.max_tokens ?? 0 },
-          { clauseId: `${prefix}:reasoning-token`, amount: context.max_tokens ?? 0 },
-          { clauseId: `${prefix}:search-query`, amount: estimateSearchQueries(context.reasoning_effort) },
-        );
-      }
-      const { transactionId } = await env.PERPLEXITY_CONTRACT.CONTRACT_AUTHORIZE({ clauses: authorizeClauses });
+
+      const { transactionId } = await env.PERPLEXITY_CONTRACT
+        .CONTRACT_AUTHORIZE({ clauses: authorizeClauses });
 
       const body: Record<string, unknown> = {
         model,
@@ -148,19 +142,19 @@ const createPerplexityChatCompletionsTool = (env: Env) =>
 
       const json = await callPerplexity(env, body);
       const settleClauses: Array<{ clauseId: string; amount: number }> = [
-        { clauseId: `${prefix}:input-token`, amount: Math.min(inputTokens, json.usage.prompt_tokens) },
-        { clauseId: `${prefix}:output-token`, amount: Math.min(json.usage.completion_tokens, context.max_tokens ?? json.usage.completion_tokens) },
+        {
+          clauseId: `${prefix}:input-token`,
+          amount: Math.min(inputTokens, json.usage.prompt_tokens),
+        },
+        {
+          clauseId: `${prefix}:output-token`,
+          amount: Math.min(
+            json.usage.completion_tokens,
+            context.max_tokens ?? json.usage.completion_tokens,
+          ),
+        },
       ];
-      if (model === "sonar-deep-research") {
-        const citation = json.usage.citation_tokens ?? 0;
-        const reasoning = json.usage.reasoning_tokens ?? 0;
-        const queries = json.usage.num_search_queries ?? 0;
-        settleClauses.push(
-          { clauseId: `${prefix}:citation-token`, amount: Math.min(citation, context.max_tokens ?? citation) },
-          { clauseId: `${prefix}:reasoning-token`, amount: Math.min(reasoning, context.max_tokens ?? reasoning) },
-          { clauseId: `${prefix}:search-query`, amount: Math.min(queries, estimateSearchQueries(context.reasoning_effort)) },
-        );
-      }
+
       await env.PERPLEXITY_CONTRACT.CONTRACT_SETTLE({
         transactionId,
         vendorId: env.DECO_CHAT_WORKSPACE,
@@ -173,7 +167,240 @@ const createPerplexityChatCompletionsTool = (env: Env) =>
     },
   });
 
+const createPerplexityDeepResearchTool = (env: Env) =>
+  createTool({
+    id: "PERPLEXITY_DEEP_RESEARCH",
+    description:
+      "Create an async deep research job (sonar-deep-research). Returns request id and transaction info.",
+    inputSchema: z
+      .object({
+        messages: z.array(ChatMessageSchema).min(1),
+        ...BasePerplexityParamsSchema,
+      })
+      .strict(),
+    outputSchema: z
+      .object({
+        request: AsyncApiChatCompletionsResponseSchema,
+        transactionId: z.string(),
+        totalAmount: z.string(),
+        authorizedCaps: z
+          .object({
+            inputTokens: z.number(),
+            maxTokens: z.number().optional(),
+            searchQueries: z.number().optional(),
+          })
+          .strict(),
+      })
+      .strict(),
+    execute: async ({ context }) => {
+      const model = "sonar-deep-research";
+      const prefix = model;
+      const inputTokens = estimateInputTokensFromMessages(context.messages);
+      const maxTokens = context.max_tokens ?? 0;
+      const searchQueries = estimateSearchQueries(context.reasoning_effort);
+
+      const authorizeClauses: Array<{ clauseId: string; amount: number }> = [
+        { clauseId: `${prefix}:input-token`, amount: inputTokens },
+        { clauseId: `${prefix}:output-token`, amount: maxTokens },
+        {
+          clauseId: `${prefix}:citation-token`,
+          amount: Math.max(maxTokens, 50000),
+        },
+        {
+          clauseId: `${prefix}:reasoning-token`,
+          amount: Math.max(maxTokens, 100000),
+        },
+        { clauseId: `${prefix}:search-query`, amount: searchQueries },
+      ];
+
+      const { transactionId, totalAmount } = await env.PERPLEXITY_CONTRACT
+        .CONTRACT_AUTHORIZE({
+          clauses: authorizeClauses,
+        });
+
+      const requestBody: Record<string, unknown> = {
+        model,
+        messages: context.messages,
+      };
+      for (const key of Object.keys(BasePerplexityParamsSchema)) {
+        const k = key as keyof typeof BasePerplexityParamsSchema;
+        if (context[k as keyof typeof context] !== undefined) {
+          (requestBody as any)[k] = context[k as keyof typeof context];
+        }
+      }
+      (requestBody as any).stream = false;
+
+      const asyncResp = await createPerplexityAsyncJob(env, requestBody);
+
+      await env.PERPLEXITY_JOBS?.put(
+        transactionId,
+        JSON.stringify({
+          authorizeClauses,
+          asyncResp,
+        }),
+      );
+
+      return {
+        request: asyncResp,
+        transactionId,
+        totalAmount,
+        authorizedCaps: {
+          inputTokens,
+          maxTokens,
+          searchQueries,
+        },
+      };
+    },
+  });
+
+const createGetPerplexityDeepResearchResultTool = (env: Env) =>
+  createTool({
+    id: "GET_PERPLEXITY_DEEP_RESEARCH_RESULT",
+    description:
+      "Get async deep research job status/result and settle contract accordingly.",
+    inputSchema: z
+      .object({
+        transactionId: z.string(),
+      }),
+    outputSchema: z
+      .object({
+        status: z.enum(["CREATED", "IN_PROGRESS", "COMPLETED", "FAILED"]),
+        response: ChatCompletionsResponseJsonSchema.nullable().optional(),
+        error_message: z.string().nullable().optional(),
+        settled: z.boolean(),
+      })
+      .strict(),
+    execute: async ({ context }) => {
+      const { transactionId } = context;
+      const storedJob = await env.PERPLEXITY_JOBS?.get(transactionId);
+      const parsedJob = storedJob ? JSON.parse(storedJob) : null;
+      const asyncResp = await getPerplexityAsyncJob(
+        env,
+        parsedJob.asyncResp.id,
+      );
+
+      if (
+        asyncResp.status === "CREATED" || asyncResp.status === "IN_PROGRESS"
+      ) {
+        return {
+          status: asyncResp.status,
+          response: null,
+          error_message: asyncResp.error_message ?? null,
+          settled: false,
+        };
+      }
+
+      const model = asyncResp.model;
+      const prefix = model;
+
+      if (asyncResp.status === "FAILED") {
+        await env.PERPLEXITY_CONTRACT.CONTRACT_SETTLE({
+          transactionId,
+          vendorId: env.DECO_CHAT_WORKSPACE,
+          clauses: [
+            { clauseId: `${prefix}:input-token`, amount: 0 },
+            { clauseId: `${prefix}:output-token`, amount: 0 },
+            { clauseId: `${prefix}:citation-token`, amount: 0 },
+            { clauseId: `${prefix}:reasoning-token`, amount: 0 },
+            { clauseId: `${prefix}:search-query`, amount: 0 },
+          ],
+        });
+        return {
+          status: asyncResp.status,
+          response: null,
+          error_message: asyncResp.error_message ?? null,
+          settled: true,
+        };
+      }
+
+      const raw = asyncResp.response;
+
+      if (!raw) {
+        await env.PERPLEXITY_CONTRACT.CONTRACT_SETTLE({
+          transactionId,
+          vendorId: env.DECO_CHAT_WORKSPACE,
+          clauses: [
+            { clauseId: `${prefix}:input-token`, amount: 0 },
+            { clauseId: `${prefix}:output-token`, amount: 0 },
+            { clauseId: `${prefix}:citation-token`, amount: 0 },
+            { clauseId: `${prefix}:reasoning-token`, amount: 0 },
+            { clauseId: `${prefix}:search-query`, amount: 0 },
+          ],
+        });
+        return {
+          status: "COMPLETED" as const,
+          response: null,
+          error_message: null,
+          settled: true,
+        };
+      }
+
+      const usage = raw.usage;
+      const settleClauses: Array<Clause> = [];
+
+      const inputAmount = parsedJob.authorizeClauses.find((c: Clause) =>
+        c.clauseId === `${prefix}:input-token`
+      )?.amount ?? 0;
+      const outputAmount = usage.completion_tokens;
+      settleClauses.push({
+        clauseId: `${prefix}:input-token`,
+        amount: Math.min(inputAmount, usage.prompt_tokens),
+      });
+      settleClauses.push({
+        clauseId: `${prefix}:output-token`,
+        amount: Math.min(outputAmount, usage.completion_tokens),
+      });
+
+      const citation = usage.citation_tokens ?? 0;
+      const reasoning = usage.reasoning_tokens ?? 0;
+      const queries = usage.num_search_queries ?? 0;
+
+      settleClauses.push({
+        clauseId: `${prefix}:citation-token`,
+        amount: Math.min(
+          citation,
+          parsedJob.authorizeClauses.find((c: Clause) =>
+            c.clauseId === `${prefix}:citation-token`
+          )?.amount ?? 0,
+        ),
+      });
+      settleClauses.push({
+        clauseId: `${prefix}:reasoning-token`,
+        amount: Math.min(
+          reasoning,
+          parsedJob.authorizeClauses.find((c: Clause) =>
+            c.clauseId === `${prefix}:reasoning-token`
+          )?.amount ?? 0,
+        ),
+      });
+      settleClauses.push({
+        clauseId: `${prefix}:search-query`,
+        amount: Math.min(
+          queries,
+          parsedJob.authorizeClauses.find((c: Clause) =>
+            c.clauseId === `${prefix}:search-query`
+          )?.amount ?? 0,
+        ),
+      });
+
+      await env.PERPLEXITY_CONTRACT.CONTRACT_SETTLE({
+        transactionId,
+        vendorId: env.DECO_CHAT_WORKSPACE,
+        clauses: settleClauses,
+      });
+
+      return {
+        status: "COMPLETED" as const,
+        response: raw,
+        error_message: null,
+        settled: true,
+      };
+    },
+  });
+
 export const perplexityTools = [
   createAskPerplexityTool,
   createPerplexityChatCompletionsTool,
+  createPerplexityDeepResearchTool,
+  createGetPerplexityDeepResearchResultTool,
 ];

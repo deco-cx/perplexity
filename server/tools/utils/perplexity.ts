@@ -2,6 +2,8 @@ import type { Env } from "../../main.ts";
 import z from "zod";
 
 export const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
+export const PERPLEXITY_ASYNC_CREATE_URL =
+  "https://api.perplexity.ai/async/chat/completions";
 
 export const ChatMessageSchema = z.object({
   role: z.enum(["system", "user", "assistant"]),
@@ -93,6 +95,30 @@ export type ChatCompletionsResponse = z.infer<
   typeof ChatCompletionsResponseJsonSchema
 >;
 
+// Async endpoints
+export const AsyncProcessingStatusSchema = z.enum([
+  "CREATED",
+  "IN_PROGRESS",
+  "COMPLETED",
+  "FAILED",
+]);
+
+export const AsyncApiChatCompletionsResponseSchema = z.object({
+  id: z.string(),
+  model: z.string(),
+  created_at: z.number(),
+  started_at: z.number().nullable().optional(),
+  completed_at: z.number().nullable().optional(),
+  response: ChatCompletionsResponseJsonSchema.nullable().optional(),
+  failed_at: z.number().nullable().optional(),
+  error_message: z.string().nullable().optional(),
+  status: AsyncProcessingStatusSchema,
+});
+
+export type AsyncApiChatCompletionsResponse = z.infer<
+  typeof AsyncApiChatCompletionsResponseSchema
+>;
+
 export const BasePerplexityParamsSchema = {
   search_mode: SearchModeSchema.optional(),
   reasoning_effort: ReasoningEffortSchema.optional(),
@@ -122,13 +148,13 @@ export const BasePerplexityParamsSchema = {
 export const ModelSchema = z.enum([
   "sonar",
   "sonar-pro",
-  "sonar-deep-research",
   "sonar-reasoning",
   "sonar-reasoning-pro",
 ]);
 
 export function ensureApiKey(env: Env): string {
-  const key = (env as unknown as { PERPLEXITY_API_KEY?: string }).PERPLEXITY_API_KEY;
+  const key =
+    (env as unknown as { PERPLEXITY_API_KEY?: string }).PERPLEXITY_API_KEY;
   if (!key) {
     throw new Error(
       "Missing PERPLEXITY_API_KEY in environment. Add it to wrangler.toml [vars].",
@@ -154,6 +180,7 @@ export function extractTextFromContent(content: unknown): string {
 export async function callPerplexity(
   env: Env,
   body: Record<string, unknown>,
+  startTime?: number,
 ): Promise<ChatCompletionsResponse> {
   const apiKey = ensureApiKey(env);
   const res = await fetch(PERPLEXITY_API_URL, {
@@ -171,8 +198,146 @@ export async function callPerplexity(
       `Perplexity API error: ${res.status} ${res.statusText} - ${text}`,
     );
   }
-  const data = await res.json();
-  return ChatCompletionsResponseJsonSchema.parse(data);
+  let data = null;
+  const reader = res.body?.getReader();
+  if (reader) {
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let lastValidData = null;
+    const effectiveStartTime = startTime ?? Date.now();
+    const TIMEOUT_MS = 55 * 1000; // 55 seconds
+
+    try {
+      while (true) {
+        // Check timeout
+        if (Date.now() - effectiveStartTime > TIMEOUT_MS) {
+          reader.cancel("Timeout after 55 seconds");
+          break;
+        }
+
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Split by lines and process each complete line
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || ""; // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const jsonStr = line.slice(6); // Remove "data: " prefix
+              const parsed = JSON.parse(jsonStr);
+              lastValidData = parsed; // Keep the last valid parsed data
+            } catch (e) {
+              console.log("Failed to parse line:", line, e);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.log("Stream reading error:", error);
+      // Continue with whatever data we have
+    } finally {
+      // Process any remaining buffer only if it's a complete JSON
+      if (buffer.startsWith("data: ")) {
+        try {
+          const jsonStr = buffer.slice(6).trim();
+          // Only try to parse if it looks like complete JSON (starts with { and ends with })
+          if (jsonStr.startsWith("{") && jsonStr.endsWith("}")) {
+            const parsed = JSON.parse(jsonStr);
+            lastValidData = parsed;
+          } else {
+            console.log(
+              "Skipping incomplete JSON in final buffer:",
+              jsonStr.substring(0, 100) + "...",
+            );
+          }
+        } catch (e) {
+          console.log(
+            "Failed to parse final buffer:",
+            buffer.substring(0, 100) + "...",
+            e instanceof Error ? e.message : String(e),
+          );
+        }
+      }
+    }
+
+    data = lastValidData;
+  } else {
+    data = await res.json();
+  }
+
+  if (!data) {
+    throw new Error("No valid data received from Perplexity API");
+  }
+
+  try {
+    return ChatCompletionsResponseJsonSchema.parse(data);
+  } catch (schemaError) {
+    console.log(
+      "Schema validation failed, attempting to return partial data:",
+      schemaError,
+    );
+    // If we have data but it doesn't match the schema, try to extract what we can
+    if (data && typeof data === "object" && "choices" in data) {
+      console.log("Returning data with possible schema issues due to timeout");
+      return data as ChatCompletionsResponse;
+    }
+    throw new Error(
+      `Invalid response format from Perplexity API: ${
+        schemaError instanceof Error ? schemaError.message : String(schemaError)
+      }`,
+    );
+  }
+}
+
+export async function createPerplexityAsyncJob(
+  env: Env,
+  request: Record<string, unknown>,
+): Promise<AsyncApiChatCompletionsResponse> {
+  const apiKey = ensureApiKey(env);
+  const res = await fetch(PERPLEXITY_ASYNC_CREATE_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({ request }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(
+      `Perplexity Async Create error: ${res.status} ${res.statusText} - ${text}`,
+    );
+  }
+  const json = await res.json();
+  return AsyncApiChatCompletionsResponseSchema.parse(json);
+}
+
+export async function getPerplexityAsyncJob(
+  env: Env,
+  requestId: string,
+): Promise<AsyncApiChatCompletionsResponse> {
+  const apiKey = ensureApiKey(env);
+  const url = `${PERPLEXITY_ASYNC_CREATE_URL}/${encodeURIComponent(requestId)}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(
+      `Perplexity Async Get error: ${res.status} ${res.statusText} - ${text}`,
+    );
+  }
+  const json = await res.json();
+  return AsyncApiChatCompletionsResponseSchema.parse(json);
 }
 
 export function estimateInputTokensFromMessages(
@@ -198,4 +363,3 @@ export function estimateSearchQueries(
   if (effort === "high") return 60;
   return 30; // default / medium
 }
-
