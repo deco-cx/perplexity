@@ -103,3 +103,7 @@ class_name = "Workflow"
 type = "Text"
 globs = [ "**/*.sql" ]
 fallthrough = true
+
+[[kv_namespaces]]
+binding = "PERPLEXITY_JOBS"
+id = "a4393c48ae274e10af1aca7629c7c5f2"
