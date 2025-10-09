@@ -11,11 +11,11 @@
   },
   "dependencies": {
     "@cloudflare/workers-types": "^4.20250823.0",
-    "@deco/workers-runtime": "npm:@jsr/deco__workers-runtime@0.13.1",
+    "@deco/workers-runtime": "npm:@jsr/deco__workers-runtime@0.22.5",
     "zod": "^3.24.3"
   },
   "devDependencies": {
-    "deco-cli": "^0.16.2",
+    "deco-cli": "^0.22.0",
     "wrangler": "^4.28.0"
   }
 }

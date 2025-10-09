@@ -153,8 +153,7 @@ export const ModelSchema = z.enum([
 ]);
 
 export function ensureApiKey(env: Env): string {
-  const key =
-    (env as unknown as { PERPLEXITY_API_KEY?: string }).PERPLEXITY_API_KEY;
+  const key = env.PERPLEXITY_API_KEY
   if (!key) {
     throw new Error(
       "Missing PERPLEXITY_API_KEY in environment. Add it to wrangler.toml [vars].",
@@ -180,7 +179,6 @@ export function extractTextFromContent(content: unknown): string {
 export async function callPerplexity(
   env: Env,
   body: Record<string, unknown>,
-  startTime?: number,
 ): Promise<ChatCompletionsResponse> {
   const apiKey = ensureApiKey(env);
   const res = await fetch(PERPLEXITY_API_URL, {
@@ -198,76 +196,8 @@ export async function callPerplexity(
       `Perplexity API error: ${res.status} ${res.statusText} - ${text}`,
     );
   }
-  let data = null;
-  const reader = res.body?.getReader();
-  if (reader) {
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let lastValidData = null;
-    const effectiveStartTime = startTime ?? Date.now();
-    const TIMEOUT_MS = 55 * 1000; // 55 seconds
 
-    try {
-      while (true) {
-        // Check timeout
-        if (Date.now() - effectiveStartTime > TIMEOUT_MS) {
-          reader.cancel("Timeout after 55 seconds");
-          break;
-        }
-
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // Split by lines and process each complete line
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || ""; // Keep incomplete line in buffer
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const jsonStr = line.slice(6); // Remove "data: " prefix
-              const parsed = JSON.parse(jsonStr);
-              lastValidData = parsed; // Keep the last valid parsed data
-            } catch (e) {
-              console.log("Failed to parse line:", line, e);
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.log("Stream reading error:", error);
-      // Continue with whatever data we have
-    } finally {
-      // Process any remaining buffer only if it's a complete JSON
-      if (buffer.startsWith("data: ")) {
-        try {
-          const jsonStr = buffer.slice(6).trim();
-          // Only try to parse if it looks like complete JSON (starts with { and ends with })
-          if (jsonStr.startsWith("{") && jsonStr.endsWith("}")) {
-            const parsed = JSON.parse(jsonStr);
-            lastValidData = parsed;
-          } else {
-            console.log(
-              "Skipping incomplete JSON in final buffer:",
-              jsonStr.substring(0, 100) + "...",
-            );
-          }
-        } catch (e) {
-          console.log(
-            "Failed to parse final buffer:",
-            buffer.substring(0, 100) + "...",
-            e instanceof Error ? e.message : String(e),
-          );
-        }
-      }
-    }
-
-    data = lastValidData;
-  } else {
-    data = await res.json();
-  }
+  const data = await res.json();
 
   if (!data) {
     throw new Error("No valid data received from Perplexity API");

@@ -1,4 +1,4 @@
-import { createTool } from "@deco/workers-runtime/mastra";
+import { createPrivateTool } from "@deco/workers-runtime/mastra";
 import type { Env } from "../main.ts";
 import z from "zod";
 import {
@@ -18,7 +18,7 @@ import {
 type Clause = { clauseId: string; amount: number };
 
 const createAskPerplexityTool = (env: Env) =>
-  createTool({
+  createPrivateTool({
     id: "ASK_PERPLEXITY",
     description:
       "Ask Perplexity with a simple prompt. Returns the first message content and raw response.",
@@ -64,10 +64,7 @@ const createAskPerplexityTool = (env: Env) =>
         }
       }
 
-      // Force streaming for tool response
-      body.stream = true;
-
-      const json = await callPerplexity(env, body, toolStartTime);
+      const json = await callPerplexity(env, body);
       const first = json?.choices?.[0]?.message?.content;
       const answer = extractTextFromContent(first) || "";
       const settleClauses: Array<{ clauseId: string; amount: number }> = [
@@ -95,7 +92,7 @@ const createAskPerplexityTool = (env: Env) =>
   });
 
 const createPerplexityChatCompletionsTool = (env: Env) =>
-  createTool({
+  createPrivateTool({
     id: "PERPLEXITY_CHAT_COMPLETIONS",
     description:
       "Low-level Perplexity chat completions call mirroring the API options.",
@@ -168,7 +165,7 @@ const createPerplexityChatCompletionsTool = (env: Env) =>
   });
 
 const createPerplexityDeepResearchTool = (env: Env) =>
-  createTool({
+  createPrivateTool({
     id: "PERPLEXITY_DEEP_RESEARCH",
     description:
       "Create an async deep research job (sonar-deep-research). Returns request id and transaction info.",
@@ -254,7 +251,7 @@ const createPerplexityDeepResearchTool = (env: Env) =>
   });
 
 const createGetPerplexityDeepResearchResultTool = (env: Env) =>
-  createTool({
+  createPrivateTool({
     id: "GET_PERPLEXITY_DEEP_RESEARCH_RESULT",
     description:
       "Get async deep research job status/result and settle contract accordingly.",

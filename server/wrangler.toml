@@ -87,16 +87,13 @@ id = "sonar-deep-research:search-query"
 price = "5000"
 description = "Sonar Deep Research search queries - $5 per 1,000 queries ($0.005 per query)"
 
-[vars]
-PERPLEXITY_API_KEY = ""
-
 [[migrations]]
 tag = "v1"
 new_classes = [ "Workflow" ]
 
 [durable_objects]
 [[durable_objects.bindings]]
-name = "DECO_CHAT_WORKFLOW_DO"
+name = "DECO_WORKFLOW_DO"
 class_name = "Workflow"
 
 [[rules]]
