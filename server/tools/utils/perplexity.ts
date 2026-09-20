@@ -4,6 +4,7 @@ import z from "zod";
 export const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
 export const PERPLEXITY_ASYNC_CREATE_URL =
   "https://api.perplexity.ai/async/chat/completions";
+const PERPLEXITY_INTEGRATION = "deco-perplexity";
 
 export const ChatMessageSchema = z.object({
   role: z.enum(["system", "user", "assistant"]),
@@ -187,6 +188,7 @@ export async function callPerplexity(
       "Content-Type": "application/json",
       Accept: "application/json",
       Authorization: `Bearer ${apiKey}`,
+      "X-Pplx-Integration": PERPLEXITY_INTEGRATION,
     },
     body: JSON.stringify(body),
   });
@@ -234,6 +236,7 @@ export async function createPerplexityAsyncJob(
       "Content-Type": "application/json",
       Accept: "application/json",
       Authorization: `Bearer ${apiKey}`,
+      "X-Pplx-Integration": PERPLEXITY_INTEGRATION,
     },
     body: JSON.stringify({ request }),
   });
@@ -258,6 +261,7 @@ export async function getPerplexityAsyncJob(
     headers: {
       Accept: "application/json",
       Authorization: `Bearer ${apiKey}`,
+      "X-Pplx-Integration": PERPLEXITY_INTEGRATION,
     },
   });
   if (!res.ok) {
